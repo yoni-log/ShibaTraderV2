@@ -1,0 +1,2 @@
+# ShibaTraderV2
+WIP
