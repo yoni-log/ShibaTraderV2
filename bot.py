@@ -6,6 +6,7 @@ import sklearn
 from LSTM import LSTMModel
 from discord.ext import commands
 from sklearn.preprocessing import MinMaxScaler
+from backend import *
 
 TOKEN = ''
 
@@ -13,6 +14,11 @@ intents = discord.Intents.all()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+
+"""
+Current database is locally run, but this will be updated
+to a MongoDB database.
+"""
 def load_database():
     pass
 
@@ -24,39 +30,78 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    pass
+    if message.user == bot:
+        pass
+
 
 """
-For inputs, the user can either decide to input a current stock, which is cached
-in the heap or database (still deciding). Using "!input" should be faster rather than
-inputting the stock together with commands such as "!input"
+This command would remove a certain stock from a user's cached
+list of downloaded stock, and can be called as "!remove AMZN"
 """
-
 # cache the current stock
 # !input AMZN
 @bot.command
-async def input(ctx):
+async def add(ctx):
+    try:
+        add_helper(ctx[0], ctx[1], ctx[2])
+    except Exception as e:
+        print(e)
+
+"""
+This command would remove a certain stock from a user's cached
+list of downloaded stock, and can be called as "!remove AMZN"
+"""
+@bot.command
+async def remove(ctx):
+    try:
+        remove_helper(ctx[0])
+    pass
+
+
+"""
+This selects the stock from the list of stocks that are
+currently cached for the user.
+"""
+@bot.command
+async def select(ctx):
     pass
 
 """
-!reset
-
+This command would reset the user's current stocks 
 """
 @bot.command
 async def reset(ctx):
     pass
 
+"""
+This command will print all statements possible.
+THe user inputs their stock such as:
+"!all AMZN" and the bot will give a detailed breakdown
+of whether the stock is a good purchase or not based on
+how it is doing. It will also give a 10-day, 10-minute, and 10-hour
+in-advance prediction of the stock
+"""
 # !all
 # !all 40 days AMZN
 @bot.command
 async def all(ctx):
     pass
 
+"""
+This command will simply only predict the stock for the user.
+The user can input their stock here as "!predict 10 minutes in 5 days AMZN"
+(10 minutes will be the interval, and days will be what is shown of the non-predicted stock)
+"""
 # !predict 10 minutes AMZN
 @bot.command
 async def predict(ctx):
-    pass
+    predict
 
+"""
+This command visualizes the stock data; the user can input
+their stock as "!visualize AMZN" and the command will automatically
+visualize the stock for them.
+"""
 @bot.command
 async def visualize(ctx):
     pass
@@ -65,12 +110,16 @@ async def visualize(ctx):
 async def outlook(ctx):
     pass
 
+@bot.command
+async def summary(ctx):
+    pass
+
 if __name__ == '__main__':
     try:
         with open("database.json", "r") as f:
             database = f
     except Exception as e:
-        print(str(e) + "\n### MAJOR ERROR ### FOUND EXCEPTION WHILE LOADING DATABASE; TERMINATING PROGRAM ###")
+        exit(str(e) + "\n### FATAL ERROR ### FOUND EXCEPTION WHILE LOADING DATABASE; TERMINATING PROGRAM ###")
 
     try:
         input_size = 2
@@ -79,7 +128,7 @@ if __name__ == '__main__':
         model.load_state_dict(state_dict)
         model.eval()
     except Exception as e:
-        print(str(e) + "\n### MAJOR ERROR ### FOUND EXCEPTION WHILE LOADING LSTM WEIGHTS; TERMINATING PROGRAM ###")
+        exit(str(e) + "\n### FATAL ERROR ### FOUND EXCEPTION WHILE LOADING LSTM WEIGHTS; TERMINATING PROGRAM ###")
 
     try:
         example_input = torch.randn(1, 5, input_size)
@@ -90,6 +139,6 @@ if __name__ == '__main__':
             prediction = scaler_y.inverse_transform(predictions.cpu().numpy())
             print("Prediction in Original Scale:", prediction)
     except Exception as e:
-        print(str(e) + "\n### MAJOR ERROR ### FOUND EXCEPTION WHILE TESTING LSTM PREDICTOR; TERMINATING PROGRAM ###")
+        exit(str(e) + "\n### FATAL ### FOUND EXCEPTION WHILE TESTING LSTM PREDICTOR; TERMINATING PROGRAM ###")
     
     bot.run(TOKEN)
