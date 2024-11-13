@@ -2,11 +2,12 @@ import discord
 import datetime
 import torch
 import sklearn
+import json
 
+from backend import *
 from LSTM import LSTMModel
 from discord.ext import commands
 from sklearn.preprocessing import MinMaxScaler
-from backend import *
 
 TOKEN = ''
 
@@ -15,62 +16,65 @@ intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 
-"""
-Current database is locally run, but this will be updated
-to a MongoDB database.
-"""
-def load_database():
-    pass
-
-
 @bot.event
 async def on_ready():
     print(f'SHIBA_TRADER LAUNCHED\n'
           f'TIME LAUNCHED (GMT): {datetime.datetime.now()}')
-
-@bot.event
-async def on_message(message):
-    if message.user == bot:
-        pass
-
 
 """
 This command would remove a certain stock from a user's cached
 list of downloaded stock, and can be called as "!remove AMZN"
 """
 # cache the current stock
-# !input AMZN
-@bot.command
-async def add(ctx):
+# !add AMZN
+@bot.command(name='add')
+async def add(ctx, ticker: str):
     try:
-        add_helper(ctx[0], ctx[1], ctx[2])
+        # Pass only the author's name and ID to add_helper
+        msg = add_helper(ctx.author.name, ctx.author.id, ticker)
+    except json.JSONDecodeError:
+        msg = "An error occurred with the database file. It may be corrupt."
+    except TypeError as e:
+        msg = f"An unexpected error occurred: {str(e)}"
     except Exception as e:
-        print(e)
+        msg = f"An unexpected error occurred: {str(e)}"
+    await ctx.send(msg)
 
 """
 This command would remove a certain stock from a user's cached
 list of downloaded stock, and can be called as "!remove AMZN"
 """
+# !remove AMZN
 @bot.command
-async def remove(ctx):
+async def remove_stock(ctx, ticker):
     try:
-        remove_helper(ctx[0])
-    pass
-
+        remove_stock_helper(ctx[0])
+    except:
+        pass
 
 """
+### May be a premium feature if database space limitations occur ###
 This selects the stock from the list of stocks that are
 currently cached for the user.
 """
+# !select AMZN
 @bot.command
-async def select(ctx):
-    pass
+async def select(ctx, ticker):
+    try:
+        select_helper(ticker)
+    except:
+        await ctx.send("Error Selecting Stock")
 
 """
 This command would reset the user's current stocks 
 """
+# !reset
 @bot.command
 async def reset(ctx):
+    try:
+        reset_helper()
+    except:
+        await ctx.send("Error Resetting")
     pass
 
 """
@@ -85,17 +89,26 @@ in-advance prediction of the stock
 # !all 40 days AMZN
 @bot.command
 async def all(ctx):
-    pass
+    try:
+        all_helper(ctx)
+    except:
+        await ctx.send("Error Generating Breakdown")
 
 """
 This command will simply only predict the stock for the user.
 The user can input their stock here as "!predict 10 minutes in 5 days AMZN"
 (10 minutes will be the interval, and days will be what is shown of the non-predicted stock)
 """
-# !predict 10 minutes AMZN
-@bot.command
-async def predict(ctx):
-    predict
+# !predict 1m 5d AMZN
+@bot.command(name='predict')
+async def predict(ctx, interval, period, stock):
+    try:
+        # Attempt to generate the prediction image
+        file, summary = predict_helper(stock, interval, period)
+        await ctx.send(summary, file=file)
+    except Exception as e:
+        await ctx.send("Error Generating Prediction")
+        print(f"Error: {e}")
 
 """
 This command visualizes the stock data; the user can input
@@ -104,22 +117,32 @@ visualize the stock for them.
 """
 @bot.command
 async def visualize(ctx):
-    pass
+    try:
+        visualize_helper(ctx)
+    except:
+        await ctx.send("Error Generating Visualization")
 
 @bot.command
 async def outlook(ctx):
-    pass
+    try:
+        outlook_helper(ctx)
+    except:
+        await ctx.send("Error Generating Outlook")
 
 @bot.command
 async def summary(ctx):
-    pass
+    try:
+        summary_helper(ctx)
+    except:
+        await ctx.send("Error Generting Summary")
 
 if __name__ == '__main__':
+    global database
     try:
         with open("database.json", "r") as f:
             database = f
     except Exception as e:
-        exit(str(e) + "\n### FATAL ERROR ### FOUND EXCEPTION WHILE LOADING DATABASE; TERMINATING PROGRAM ###")
+        exit(f"{str(e)}\n### FATAL ERROR ### FOUND EXCEPTION WHILE LOADING DATABASE; TERMINATING PROGRAM ###", 1)
 
     try:
         input_size = 2
@@ -128,7 +151,7 @@ if __name__ == '__main__':
         model.load_state_dict(state_dict)
         model.eval()
     except Exception as e:
-        exit(str(e) + "\n### FATAL ERROR ### FOUND EXCEPTION WHILE LOADING LSTM WEIGHTS; TERMINATING PROGRAM ###")
+        exit(f"{str(e)}\n### FATAL ERROR ### FOUND EXCEPTION WHILE LOADING LSTM WEIGHTS; TERMINATING PROGRAM ###", 1)
 
     try:
         example_input = torch.randn(1, 5, input_size)
@@ -136,9 +159,18 @@ if __name__ == '__main__':
         with torch.no_grad():
             predictions = model(example_input)
             # Transform predictions back to original scale
-            prediction = scaler_y.inverse_transform(predictions.cpu().numpy())
-            print("Prediction in Original Scale:", prediction)
+            print("Prediction in Original Scale:", predictions)
     except Exception as e:
-        exit(str(e) + "\n### FATAL ### FOUND EXCEPTION WHILE TESTING LSTM PREDICTOR; TERMINATING PROGRAM ###")
+        exit(f"{str(e)}\n### FATAL ### FOUND EXCEPTION WHILE TESTING LSTM PREDICTOR; TERMINATING PROGRAM ###", 1)
     
+    try:
+        with open('database.json', 'r') as f:
+            database = json.load(f)
+        total_user_count = database['users']
+        print(f"{total_user_count} unique users have used shiba-trader!")
+    except Exception as e:
+        exit(f"{str(e)}\n### FATAL ### FOUND EXCEPTION LOADING DATABASE; TERMINATING PROGRAM ###")
+    
+    print("\n\n\n### ALL TESTS PASSED; LAUNCHING SHIBA TRADER ###\n\n\n")
+
     bot.run(TOKEN)
