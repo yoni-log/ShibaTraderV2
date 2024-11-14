@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import yfinance as yf
 import pandas as pd
+import numpy as np
 import discord
 import json
 import os
@@ -70,7 +71,6 @@ def predict_helper(ticker, interval, period):
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, train_size=0.8, random_state=42
         )
-
         # Train the model
         model = LinearRegression()
         model.fit(X_train, y_train)
@@ -81,11 +81,11 @@ def predict_helper(ticker, interval, period):
 
         # Generate predictions
         predictions = model.predict(X)
-    
+
         # Plot predictions
         plt.figure(figsize=(12, 6))
-        plt.plot(ticker_data.index, predictions, label='Predicted Close Prices', color='skyblue')
-        plt.plot(ticker_data.index, ticker_data['Open'], label='Open Prices', color='orange')
+        plt.plot(y.index, predictions, label='Predicted Close Prices', color='skyblue')
+        plt.plot(y.index, y, label='Real Close Prices', color='orange')
         plt.legend()
 
         # Save plot to a BytesIO buffer
@@ -93,7 +93,29 @@ def predict_helper(ticker, interval, period):
         plt.savefig(buf, format='png')
         buf.seek(0)
         plt.close()
-        summary = "Predictions for " + ticker + "\n Model score: {:.2f}".format(score)
+
+        correct = 0
+        wrong = 0
+        real_values = y.values
+
+        # derrivative of the functions
+        predictions_diff = np.diff(predictions)
+        real_values = diff = np.diff(real_values)
+
+        # concavity of the functions
+        predicted_direction = np.sign(predictions_diff)
+        actual_direction = np.sign(real_values)
+        
+        for i in range(len(predicted_direction)):
+            if predicted_direction[i] == actual_direction[i]:
+                correct += 1
+            else:
+                wrong += 1
+        
+        # summarize and check if undefined
+        accuracy = correct / (correct + wrong) if (correct + wrong) > 0 else 0
+        summary = f"Predictions for {ticker}\nModel score: {score:.2f}\nModel Accuracy on Testing Data: {accuracy:.2%} (Win: {correct} Loss: {wrong})"
+        
         return discord.File(fp=buf, filename='plot.png'), summary
 
     except Exception as e:
