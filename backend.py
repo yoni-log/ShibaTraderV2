@@ -79,14 +79,20 @@ def predict_helper(ticker, interval, period):
         score = model.score(X_test, y_test)
         print(f"Model R^2 Score: {score:.2f}")
 
-        # Generate predictions
-        predictions = model.predict(X)
+        # Generate predictions on the entire dataset
+        predictions = model.predict(X).flatten()
+        real_values = y.values.flatten()
 
         # Plot predictions
         plt.figure(figsize=(12, 6))
+        plt.plot(y.index, real_values, label='Real Close Prices', color='orange')
         plt.plot(y.index, predictions, label='Predicted Close Prices', color='skyblue')
-        plt.plot(y.index, y, label='Real Close Prices', color='orange')
         plt.legend()
+        plt.title(f'{ticker} Actual vs Predicted Close Prices')
+        plt.xlabel('Date')
+        plt.ylabel('Price')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
 
         # Save plot to a BytesIO buffer
         buf = io.BytesIO()
@@ -94,30 +100,37 @@ def predict_helper(ticker, interval, period):
         buf.seek(0)
         plt.close()
 
-        correct = 0
-        wrong = 0
-        real_values = y.values
-
-        # derrivative of the functions
-        predictions_diff = np.diff(predictions)
-        real_values = diff = np.diff(real_values)
-
-        # concavity of the functions
-        predicted_direction = np.sign(predictions_diff)
-        actual_direction = np.sign(real_values)
-        
-        for i in range(len(predicted_direction)):
-            if predicted_direction[i] == actual_direction[i]:
-                correct += 1
-            else:
-                wrong += 1
-        
-        # summarize and check if undefined
-        accuracy = correct / (correct + wrong) if (correct + wrong) > 0 else 0
-        summary = f"Predictions for {ticker}\nModel score: {score:.2f}\nModel Accuracy on Testing Data: {accuracy:.2%} (Win: {correct} Loss: {wrong})"
-        
-        return discord.File(fp=buf, filename='plot.png'), summary
+        return discord.File(fp=buf, filename='plot.png'), get_summary(ticker, predictions, real_values, score)
 
     except Exception as e:
         print(f"Error in predict_helper: {e}")
         raise  # Reraise the exception to handle it in the calling function
+
+
+def get_summary(ticker, predictions, real_values, score):
+    # Calculate the win rate
+    correct = 0
+    wrong = 0
+
+    # Calculate day-to-day price changes (Derrivative)
+    predicted_price_change = np.diff(predictions)
+    actual_price_change = np.diff(real_values)
+
+    # Determine the direction of price movement (Concavity)
+    predicted_direction = np.sign(predicted_price_change)
+    actual_direction = np.sign(actual_price_change)
+
+    # Compare predicted direction to actual direction
+    for i in range(len(predicted_direction)):
+        if predicted_direction[i] == actual_direction[i]:
+            correct += 1
+        else:
+            wrong += 1
+
+    accuracy = correct / (correct + wrong) if (correct + wrong) > 0 else 0
+    win_rate = accuracy * 100
+    summary = (f"Predictions for {ticker}\n"
+                f"Model R^2 Score: {score:.2f}\n"
+               f"Model Win Rate: {win_rate:.2f}% "
+               f"(Win: {correct} Loss: {wrong})")
+    return summary
