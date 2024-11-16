@@ -57,20 +57,24 @@ def select_helper():
     pass
 
 def predict_helper(ticker, interval, period):
-    try:
-        # Download stock data
+    try: 
         ticker_data = yf.download(ticker, interval=interval, period=period)
-        if ticker_data.empty:
-            raise ValueError("No data downloaded for the specified parameters.")
+    except:
+        return None, "No data downloaded for the specified parameters."
+    
+    try:        
+        ticker_data['Close_lag1'] = ticker_data['Close'].shift(1)
+        ticker_data.dropna(inplace=True)
 
         # Define features and target
-        X = ticker_data[['Open', 'Volume']]
-        y = ticker_data[['Close']]
-        
+        X = ticker_data[['Close_lag1']]
+        y = ticker_data['Close']
+
         # Split data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, train_size=0.8, random_state=42
-        )
+        split_index = int(len(X) * 0.8)
+        X_train, X_test = X[:split_index], X[split_index:]
+        y_train, y_test = y[:split_index], y[split_index:]
+
         # Train the model
         model = LinearRegression()
         model.fit(X_train, y_train)
@@ -79,28 +83,17 @@ def predict_helper(ticker, interval, period):
         score = model.score(X_test, y_test)
         print(f"Model R^2 Score: {score:.2f}")
 
-        # Generate predictions on the entire dataset
-        predictions = model.predict(X).flatten()
-        real_values = y.values.flatten()
+        last_feature = X_test.iloc[-1].values.reshape(1, -1)
+        future_predictions = []
+        for _ in range(10):
+            next = model.predict(last_feature)
+            future_predictions.append(next[0])
+            last_feature = np.array(next).reshape(1, -1)
 
         # Plot predictions
-        plt.figure(figsize=(12, 6))
-        plt.plot(y.index, real_values, label='Real Close Prices', color='orange')
-        plt.plot(y.index, predictions, label='Predicted Close Prices', color='skyblue')
-        plt.legend()
-        plt.title(f'{ticker} Actual vs Predicted Close Prices')
-        plt.xlabel('Date')
-        plt.ylabel('Price')
-        plt.xticks(rotation=45)
-        plt.tight_layout()
+        figure = plot_graph(ticker, ticker_data['Close'].values, future_predictions)
 
-        # Save plot to a BytesIO buffer
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png')
-        buf.seek(0)
-        plt.close()
-
-        return discord.File(fp=buf, filename='plot.png'), get_summary(ticker, predictions, real_values, score)
+        return discord.File(fp=figure, filename='plot.png'), get_summary(ticker, future_predictions, ticker_data['Close'].values, score)
 
     except Exception as e:
         print(f"Error in predict_helper: {e}")
@@ -108,29 +101,21 @@ def predict_helper(ticker, interval, period):
 
 
 def get_summary(ticker, predictions, real_values, score):
-    # Calculate the win rate
-    correct = 0
-    wrong = 0
-
-    # Calculate day-to-day price changes (Derrivative)
-    predicted_price_change = np.diff(predictions)
-    actual_price_change = np.diff(real_values)
-
-    # Determine the direction of price movement (Concavity)
-    predicted_direction = np.sign(predicted_price_change)
-    actual_direction = np.sign(actual_price_change)
-
-    # Compare predicted direction to actual direction
-    for i in range(len(predicted_direction)):
-        if predicted_direction[i] == actual_direction[i]:
-            correct += 1
-        else:
-            wrong += 1
-
-    accuracy = correct / (correct + wrong) if (correct + wrong) > 0 else 0
-    win_rate = accuracy * 100
     summary = (f"Predictions for {ticker}\n"
-                f"Model R^2 Score: {score:.2f}\n"
-               f"Model Win Rate: {win_rate:.2f}% "
-               f"(Win: {correct} Loss: {wrong})")
+               f"Model R^2 Score: {score:.2f}\n")
     return summary
+
+def plot_graph(ticker, original_values, predicted_values):
+    plt.figure(figsize=(12, 6))
+    predicted_index = np.arange(len(original_values), len(original_values) + len(predicted_values))
+    plt.plot(np.arange(len(original_values)), original_values, label="Real Closing Values", color='orange')
+    plt.plot(predicted_index, predicted_values, label="Predicted Closing Values", color='skyblue', linestyle='dotted')
+    plt.legend()
+    plt.title(f'{ticker} Actual vs Predicted Close Prices')
+    plt.xlabel('Date')
+    plt.ylabel('Price')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    return buf
